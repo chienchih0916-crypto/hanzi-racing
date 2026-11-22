@@ -1,0 +1,32 @@
+function downloadCertificate(){
+  if(!gamePassed)return;
+  const name=document.getElementById('certificate-name').value.trim() || '挑戰者';
+  const canvas=document.createElement('canvas');
+  canvas.width=1600;canvas.height=1120;
+  const c=canvas.getContext('2d');
+  c.fillStyle='#fbf3de';c.fillRect(0,0,1600,1120);
+  c.strokeStyle='#234b46';c.lineWidth=8;c.strokeRect(42,42,1516,1036);
+  c.strokeStyle='#bb8741';c.lineWidth=2;c.strokeRect(60,60,1480,1000);
+  c.fillStyle='#234b46';c.fillRect(60,60,1480,165);
+  c.textAlign='center';c.fillStyle='#fff4d8';
+  c.font='bold 30px sans-serif';c.fillText('漢字飛車  /  KANJI SPEED RUN',800,125);
+  c.font='bold 52px serif';c.fillText('90 秒公路挑戰 · 通關證明',800,193);
+  c.fillStyle='#234b46';c.font='28px sans-serif';c.fillText('恭喜完成造字法則挑戰',800,305);
+  let size=76;
+  do{c.font=`bold ${size--}px sans-serif`;}while(c.measureText(name).width>1300 && size>24);
+  c.fillText(name,800,420);
+  c.strokeStyle='#bb8741';c.beginPath();c.moveTo(420,460);c.lineTo(1180,460);c.stroke();
+  c.font='28px sans-serif';c.fillText('挑戰得分',800,540);
+  c.font='bold 112px sans-serif';c.fillStyle='#9c432d';c.fillText(score.toLocaleString('zh-TW'),800,670);
+  c.fillStyle='#234b46';c.font='30px sans-serif';
+  c.fillText(`完成時間 90 秒　｜　錯誤（含漏答）${wrongCount} 次`,800,760);
+  c.fillText(`字卡答對 ${correctCount} 題　｜　最高連擊 ${maxCombo} 次`,800,815);
+  c.font='25px sans-serif';
+  c.fillText('通關條件：完成 90 秒挑戰，答錯與漏答合計未滿三次',800,900);
+  c.fillText('完成日期：'+completedAt.toLocaleDateString('zh-TW',{timeZone:'Asia/Taipei'}),800,953);
+  c.font='22px sans-serif';c.fillText('林威宇老師 × 南一書局 製作',800,1020);
+  const link=document.createElement('a');
+  link.download=`漢字飛車-通關證明-${name.replace(/[\\/:*?"<>|]/g,'_')}.png`;
+  link.href=canvas.toDataURL('image/png');
+  link.click();
+}

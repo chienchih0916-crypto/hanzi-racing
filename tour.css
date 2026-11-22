@@ -173,3 +173,8 @@ button{touch-action:manipulation}
   #boss-speech-el{font-size:13px;padding:6px 10px;margin-bottom:6px}
   .boss-choice{padding:5px 10px;font-size:14px}
 }
+
+#certificate-form{display:grid;gap:8px;margin:16px 0;text-align:left}
+#certificate-form label{font-size:16px;font-weight:700}
+#certificate-name{width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--rule);border-radius:3px;background:#fffbef;color:var(--ink);font:16px var(--sans)}
+#certificate-form .retry-btn{width:100%;font-size:16px}

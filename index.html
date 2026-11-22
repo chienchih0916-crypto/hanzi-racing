@@ -151,7 +151,7 @@ canvas#road{position:absolute;top:0;left:0;z-index:0;display:block;}
     <div class="kicker"><i aria-hidden="true"></i>美國公路探險</div>
     <h1 id="game-title">漢字<em>飛車</em></h1>
     <div class="poster-en">KANJI SPEED RUN</div>
-    <p>穿越五站美國風景，在字卡迎面而來時，<br class="wide-br">選出正確的造字法則。</p>
+    <p>穿越五站美國風景，在字卡迎面而來時，<br class="wide-br">在 90 秒內挑戰最高分，錯滿三題即失敗。</p>
     <div class="actions"><button class="drive" onclick="startGame()">開始挑戰 <span aria-hidden="true">→</span></button><button class="manual" onclick="document.getElementById('guide').showModal()">遊玩說明</button></div>
    </div>
   </section>
@@ -173,7 +173,7 @@ canvas#road{position:absolute;top:0;left:0;z-index:0;display:block;}
  <h2 id="guide-title">遊玩說明</h2>
  <p>看清迎面而來的漢字，按對應按鍵或點選答案。答得越快，得分越高。</p>
  <dl class="rules"><div><kbd>A</kbd><dt>象形</dt><dd>描繪事物的外形</dd><b>山</b></div><div><kbd>S</kbd><dt>指事</dt><dd>用符號指出意義</dd><b>上</b></div><div><kbd>D</kbd><dt>會意</dt><dd>組合字義表達新意</dd><b>林</b></div><div><kbd>F</kbd><dt>形聲</dt><dd>形旁表義，聲旁表音</dd><b>河</b></div></dl>
- <p>每局有三次機會，答錯或漏答會消耗一次。前兩輪每答對五題，會遇到一位出題的旅人。</p>
+ <p>每局限時 90 秒，旅人問答期間也會持續倒數。字卡答錯、漏答或旅人問答答錯，累計三次立即失敗。撐滿 90 秒且未錯滿三次即可通關，下載含姓名與分數的通關證明。前兩輪每答對五題，會遇到一位出題的旅人。</p>
  <form method="dialog"><button class="drive">回到大廳 <span aria-hidden="true">→</span></button></form>
 </dialog>
 
@@ -186,8 +186,8 @@ canvas#road{position:absolute;top:0;left:0;z-index:0;display:block;}
       <div class="hud-scene" id="scene-el">NEW YORK CITY</div>
     </div>
     <div>
-      <div class="hud-timer" id="timer-el">00:00</div>
-      <div class="hud-timer-label">行駛時間</div>
+      <div class="hud-timer" id="timer-el">01:30</div>
+      <div class="hud-timer-label">剩餘時間</div>
     </div>
     <div style="text-align:right">
       <small class="life-label">剩餘機會</small><div class="hud-lives" id="lives-el"></div>
@@ -248,6 +248,11 @@ canvas#road{position:absolute;top:0;left:0;z-index:0;display:block;}
   <section class="result-ticket"><div class="ticket-label">公路成績單　／　RACE LOG</div><div class="res-title" id="res-title">RACE OVER!</div>
   <div class="res-box"><div class="res-num" id="res-score">0</div><div class="res-lbl">本次總分</div></div>
   <div class="res-detail" id="res-detail"></div>
+  <form id="certificate-form" class="hidden" onsubmit="event.preventDefault();downloadCertificate()">
+    <label for="certificate-name">證明姓名（選填）</label>
+    <input id="certificate-name" maxlength="24" placeholder="輸入姓名或暱稱" autocomplete="off">
+    <button type="submit" class="retry-btn">下載通關證明（PNG）</button>
+  </form>
   <button class="retry-btn" onclick="retryGame()">再跑一次　→</button>
   <div style="margin-top:1.2rem;color:rgba(255,255,255,.45);font-size:.78rem;font-family:'Noto Serif TC',serif;letter-spacing:.12em;text-align:center;">林威宇老師 × 南一書局 製作</div></section>
 </div>
@@ -2702,6 +2707,23 @@ const PRINCIPLES = {
 // ════════════════════════════════════════════════════
 // GAME STATE
 // ════════════════════════════════════════════════════
+const GAME_SECONDS=90;
+let gameDeadline=0, gameRunId=0, gamePassed=false, completedAt=null;
+function gameTimeout(callback, delay){
+  const run=gameRunId;
+  return setTimeout(()=>{if(run===gameRunId && gameRunning) callback();},delay);
+}
+function updateGameClock(){
+  if(!gameRunning)return false;
+  const remaining=Math.max(0,Math.ceil((gameDeadline-performance.now())/1000));
+  const previousElapsed=elapsedSec;
+  elapsedSec=GAME_SECONDS-remaining;
+  if(Math.floor(elapsedSec/30)>Math.floor(previousElapsed/30))gameSpeed=Math.min(3.5,gameSpeed+0.12);
+  document.getElementById('timer-el').textContent=String(Math.floor(remaining/60)).padStart(2,'0')+':'+String(remaining%60).padStart(2,'0');
+  document.getElementById('timer-el').classList.toggle('urgent',remaining<=10);
+  if(remaining===0){endGame(true);return false;}
+  return true;
+}
 let score=0,lives=3,elapsedSec=0,combo=0,maxCombo=0;
 let correctCount=0,wrongCount=0,total=0;
 let curChar=null,cardActive=false,gameRunning=false,bossPaused=false;
@@ -2749,6 +2771,8 @@ function renderLives(){
 // START / RETRY
 // ════════════════════════════════════════════════════
 function startGame(){
+  gameRunId++; gamePassed=false; completedAt=null;
+  document.getElementById('certificate-form').classList.add('hidden');
   prepareTour();
   resetTourMotion();
   const SoundContext = window.AudioContext || window.webkitAudioContext;
@@ -2775,7 +2799,7 @@ function startGame(){
   Object.values(SCENE_BOSSES).forEach(b=>{ b._speechIdx=0; });
 
   document.getElementById('score-el').textContent='0';
-  document.getElementById('timer-el').textContent='00:00';
+  document.getElementById('timer-el').textContent='01:30';
   document.getElementById('timer-el').classList.remove('urgent');
   document.getElementById('prog-bar').style.width='0%';
   document.getElementById('streak-el').style.opacity='0';
@@ -2791,17 +2815,10 @@ function startGame(){
   renderLoop();
 
   clearInterval(timerInt);
-  timerInt=setInterval(()=>{
-    if(bossPaused||!gameRunning)return;
-    elapsedSec++;
-    const mm=String(Math.floor(elapsedSec/60)).padStart(2,'0');
-    const ss=String(elapsedSec%60).padStart(2,'0');
-    document.getElementById('timer-el').textContent=mm+':'+ss;
-    // Speed up game slightly every 30 seconds
-    if(elapsedSec%30===0) gameSpeed=Math.min(3.5,gameSpeed+0.12);
-  },1000);
+  gameDeadline=performance.now()+GAME_SECONDS*1000;
+  timerInt=setInterval(updateGameClock,100);
 
-  setTimeout(spawnCard,500);
+  gameTimeout(spawnCard,500);
 }
 function retryGame(){stopFireworks();startGame();}
 
@@ -2910,7 +2927,7 @@ function initCardQueue(chars, spd) {
     cardQueue.push(obj);
 
     // Launch this card after its stagger delay
-    setTimeout(() => {
+    gameTimeout(() => {
       if(!gameRunning || bossPaused) return;
       obj.started = true;
       el.style.display = 'block';
@@ -2921,6 +2938,7 @@ function initCardQueue(chars, spd) {
       let previousWidth = W;
       function step(now) {
         if(!gameRunning || obj.answered) return;
+        if(!updateGameClock())return;
         const elapsed = Math.min(50, Math.max(0, now-previousFrame));
         previousFrame = now;
         if(bossPaused || document.hidden) { obj.raf = requestAnimationFrame(step); return; }
@@ -2944,7 +2962,7 @@ function initCardQueue(chars, spd) {
           triggerCarCrash(); playImpactThud();
           el.classList.remove('warning');
           el.style.transition='opacity .25s'; el.style.opacity='0.08';
-          setTimeout(()=>{ el.style.transition=''; el.style.opacity='1'; el.style.display='none'; },300);
+          gameTimeout(()=>{ el.style.transition=''; el.style.opacity='1'; el.style.display='none'; },300);
           combo=0; document.getElementById('streak-el').style.opacity='0';
           loseLife();
           showHint('太慢啦！'+ch.char+' 是「'+ch.type+'」— '+ch.hint,'#ff8060');
@@ -2961,11 +2979,12 @@ function initCardQueue(chars, spd) {
 function checkAllCardsDone() {
   const allDone = cardQueue.every(q => q.answered);
   if (allDone && gameRunning && lives > 0) {
-    setTimeout(spawnCard, 800);
+    gameTimeout(spawnCard, 800);
   }
 }
 
 function answerCurrentCard(type) {
+  if(!updateGameClock())return false;
   // Find first unanswered card
   // Find the first STARTED and unanswered card (the one that's actually flying)
   const obj = cardQueue.find(q => !q.answered && q.started);
@@ -2983,7 +3002,7 @@ function answerCurrentCard(type) {
     document.getElementById('score-el').textContent = score;
     obj.revEl.style.opacity = '1';
     obj.el.classList.remove('warning'); obj.el.classList.add('burst');
-    setTimeout(()=>{
+    gameTimeout(()=>{
       obj.el.classList.remove('burst');
       obj.el.style.transform=''; obj.el.style.filter='';
       obj.el.style.display = 'none';
@@ -3006,7 +3025,7 @@ function answerCurrentCard(type) {
         multiMode = sceneRound>=2?3:sceneRound>=1?2:1;
         const msgs=['','第二輪！同時兩個字！🔥','第三輪！同時三個字！🔥🔥'];
         showHint('🔄 '+msgs[Math.min(sceneRound,2)],'#ff8040');
-        if(sceneRound>=3) { showSuperChampion(); return true; }
+
       }
       // More chars per scene as rounds progress
       var perScene = sceneRound >= 2 ? 14 : sceneRound >= 1 ? 10 : 8;
@@ -3018,7 +3037,7 @@ function answerCurrentCard(type) {
       if(sceneRound < 2){
         // Only trigger boss in rounds 1 and 2; round 3 = pure character challenge
         document.getElementById('prog-bar').style.width='100%';
-        setTimeout(triggerBoss,460);
+        gameTimeout(triggerBoss,460);
       }
     }
     checkAllCardsDone();
@@ -3026,13 +3045,16 @@ function answerCurrentCard(type) {
   } else {
     // Wrong answer
     combo=0; document.getElementById('streak-el').style.opacity='0';
-    wrongCount++; gameSpeed=Math.max(0.6,gameSpeed-.25);
+    obj.answered=true;
+    if(obj.raf)cancelAnimationFrame(obj.raf);
+    gameSpeed=Math.max(0.6,gameSpeed-.25);
     playWrongAnswer();
     triggerCarCrash();
     loseLife(); shakeScreen(); flashBtn(type,'wrong-flash');
     showHint('❌ '+obj.char.char+' 是「'+obj.char.type+'」！'+obj.char.hint,'#ff8060');
     obj.el.classList.remove('warning'); obj.el.classList.add('wrong-drop');
-    setTimeout(()=>{obj.el.classList.remove('wrong-drop');obj.el.style.transform='';obj.el.style.filter='';},370);
+    gameTimeout(()=>{obj.el.classList.remove('wrong-drop');obj.el.style.transform='';obj.el.style.filter='';obj.el.style.display='none';},370);
+    checkAllCardsDone();
     playCrash();
     return false;
   }
@@ -3127,10 +3149,11 @@ function triggerBoss(){
 
   document.getElementById('boss-overlay').classList.remove('hidden');
   // Dramatic sound cue
-  playBeep(350,.16);setTimeout(()=>playBeep(280,.13),160);setTimeout(()=>playBeep(220,.11),300);
+  playBeep(350,.16);gameTimeout(()=>playBeep(280,.13),160);gameTimeout(()=>playBeep(220,.11),300);
 }
 
 function checkBossAnswer(btn,isCorrect,boss){
+  if(!gameRunning || !bossPaused || !btn.onclick || !updateGameClock())return;
   const msgEl=document.getElementById('boss-msg-el');
   if(isCorrect){
     btn.classList.add('correct');
@@ -3141,8 +3164,8 @@ function checkBossAnswer(btn,isCorrect,boss){
     msgEl.style.color='#60ff80';
     msgEl.style.background='rgba(30,180,30,.15)';
     msgEl.textContent='✅ 答對了！＋2000分！ROAD CLEAR！';
-    playBeep(880,.12);setTimeout(()=>playBeep(1108,.1),110);setTimeout(()=>playBeep(1320,.09),220);setTimeout(()=>playBeep(1760,.08),330);
-    setTimeout(()=>{
+    playBeep(880,.12);gameTimeout(()=>playBeep(1108,.1),110);gameTimeout(()=>playBeep(1320,.09),220);gameTimeout(()=>playBeep(1760,.08),330);
+    gameTimeout(()=>{
       document.getElementById('boss-overlay').classList.add('hidden');
       bossPaused=false;
       document.getElementById('prog-bar').style.width='0%';
@@ -3155,8 +3178,9 @@ function checkBossAnswer(btn,isCorrect,boss){
     btn.classList.add('wrong');btn.onclick=null;
     msgEl.style.color='#ff8060';
     msgEl.style.background='rgba(180,30,30,.15)';
-    msgEl.textContent='❌ 答錯！－1000分…再想想看！';
+    msgEl.textContent='❌ 答錯！－1000分，扣一次機會…再想想看！';
     playWrongAnswer();
+    loseLife();
   }
 }
 
@@ -3230,10 +3254,12 @@ function triggerCarCrash(){
 }
 
 function loseLife(){
+  if(!updateGameClock())return;
+  wrongCount++;
   lives=Math.max(0,lives-1); renderLives(); warningFlash=15;
   const f=document.getElementById('hit-flash');
   f.classList.add('on'); setTimeout(()=>f.classList.remove('on'),160);
-  if(lives<=0){gameRunning=false;clearInterval(timerInt);cancelAnimationFrame(cardAF);playBrakeAndCrash();setTimeout(endGame,1300);}
+  if(lives<=0){playBrakeAndCrash();endGame(false);}
 }
 function shakeScreen(){
   const s=document.getElementById('game-screen');
@@ -3371,54 +3397,14 @@ function stopFireworks(){
   document.body.appendChild(fireworksCanvas);
 }
 
-function playFinishLineSound(){
-  try{
-    if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-    const t=audioCtx.currentTime;
-    // Rising fanfare: 4 ascending notes
-    const freqs=[392,494,587,784]; // G4-B4-D5-G5
-    freqs.forEach((f,i)=>{
-      const o=audioCtx.createOscillator(),g=audioCtx.createGain();
-      o.type='triangle'; o.frequency.value=f;
-      g.gain.setValueAtTime(0,t+i*0.18);
-      g.gain.linearRampToValueAtTime(0.28,t+i*0.18+0.05);
-      g.gain.exponentialRampToValueAtTime(0.001,t+i*0.18+0.50);
-      o.connect(g);g.connect(audioCtx.destination);
-      o.start(t+i*0.18);o.stop(t+i*0.18+0.52);
-    });
-    // Low whoosh (tyre squeal feel)
-    const o2=audioCtx.createOscillator(),g2=audioCtx.createGain();
-    o2.type='sawtooth';
-    o2.frequency.setValueAtTime(180,t);o2.frequency.exponentialRampToValueAtTime(900,t+1.2);
-    g2.gain.setValueAtTime(0.18,t);g2.gain.exponentialRampToValueAtTime(0.001,t+1.3);
-    o2.connect(g2);g2.connect(audioCtx.destination);
-    o2.start(t);o2.stop(t+1.4);
-  }catch(e){}
-}
-
-function showSuperChampion(){
-  // Step 1: Run finish line animation on the track (3 seconds)
-  gameRunning = false;
-  clearInterval(timerInt);
+function endGame(passed=false){
+  if(!gameRunning)return;
+  gamePassed=passed && lives>0 && elapsedSec>=GAME_SECONDS;
+  completedAt=new Date();
+  cardQueue.forEach(q=>{q.answered=true;cancelAnimationFrame(q.raf);});
   hideAllCards();
-  finishAnim = 180;
-  playFinishLineSound();
-
-  // Step 2: After 2.8s (finish line passes), show champion overlay + fireworks
-  setTimeout(function(){
-    const ov=document.createElement('div');
-    ov.id='champion-overlay';
-    ov.innerHTML=`
-      <section class="champion-ticket"><div class="ticket-label">美國公路探險　／　FINISH</div>
-      <h2>超級賽車手</h2><p>你已完成五站公路的三輪造字挑戰！</p>
-      <button class="drive" onclick="document.getElementById('champion-overlay').remove();endGame();">查看成績　→</button></section>`;
-    document.body.appendChild(ov);
-    runFireworks(true);
-    stopBgMusic();
-  }, 2800);
-}
-
-function endGame(){
+  bossPaused=false;
+  document.getElementById('certificate-form').classList.toggle('hidden',!gamePassed);
   stopBgMusic();
   gameRunning=false;cancelAnimationFrame(cardAF);cancelAnimationFrame(rafId);clearInterval(timerInt);
   document.getElementById('game-screen').classList.add('hidden');
@@ -3426,16 +3412,17 @@ function endGame(){
   document.getElementById('result-screen').classList.remove('hidden');
   document.getElementById('result-screen').scrollTop=0;
   stopFireworks();
-  _fwT=setTimeout(function(){runFireworks(false);},400);
-  const t=score>=500?'冠軍車手':score>=200?'精彩完賽':'繼續加油';
+  if(gamePassed)_fwT=setTimeout(function(){runFireworks(false);},400);
+  const t=gamePassed?'挑戰通關！':'挑戰失敗';
   const mm=String(Math.floor(elapsedSec/60)).padStart(2,'0');
   const ss=String(elapsedSec%60).padStart(2,'0');
   document.getElementById('res-title').textContent=t;
   document.getElementById('res-score').textContent=score;
   document.getElementById('res-detail').innerHTML=
-    `答對 <span>${correctCount}</span> 題 ／ 答錯 <span>${wrongCount}</span> 題<br>`+
+    `字卡答對 <span>${correctCount}</span> 題 ／ 錯誤（含漏答）<span>${wrongCount}</span> 次<br>`+
     `最高連擊 <span>${maxCombo}</span> 次 ／ 行駛時間 <span>${mm}:${ss}</span><br>`+
-    `抵達場景：<span>${routeNames[sceneIdx%SCENES.length]}</span>`;
+    `抵達場景：<span>${routeNames[sceneIdx%SCENES.length]}</span><br>`+
+    (gamePassed?'完成 90 秒挑戰！下載證明，留下你的最佳表現。':'累計三次錯誤，挑戰結束。再試一次！');
 }
 
 // ════════════════════════════════════════════════════
@@ -3519,5 +3506,6 @@ document.addEventListener('keydown',e=>{
 });
 </script>
 <script src="tour.js?v=grounded"></script>
+<script src="certificate.js"></script>
 </body>
 </html>
